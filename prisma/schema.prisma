@@ -1,0 +1,1753 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["auth", "public", "storage"]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model audit_log_entries {
+  instance_id String?   @db.Uuid
+  id          String    @id @db.Uuid
+  payload     Json?     @db.Json
+  created_at  DateTime? @db.Timestamptz(6)
+  ip_address  String    @default("") @db.VarChar(64)
+
+  @@index([instance_id], map: "audit_logs_instance_id_idx")
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model flow_state {
+  id                     String                @id @db.Uuid
+  user_id                String?               @db.Uuid
+  auth_code              String
+  code_challenge_method  code_challenge_method
+  code_challenge         String
+  provider_type          String
+  provider_access_token  String?
+  provider_refresh_token String?
+  created_at             DateTime?             @db.Timestamptz(6)
+  updated_at             DateTime?             @db.Timestamptz(6)
+  authentication_method  String
+  auth_code_issued_at    DateTime?             @db.Timestamptz(6)
+  saml_relay_states      saml_relay_states[]
+
+  @@index([created_at(sort: Desc)])
+  @@index([auth_code], map: "idx_auth_code")
+  @@index([user_id, authentication_method], map: "idx_user_id_auth_method")
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model identities {
+  provider_id     String
+  user_id         String    @db.Uuid
+  identity_data   Json
+  provider        String
+  last_sign_in_at DateTime? @db.Timestamptz(6)
+  created_at      DateTime? @db.Timestamptz(6)
+  updated_at      DateTime? @db.Timestamptz(6)
+  email           String?   @default(dbgenerated("lower((identity_data ->> 'email'::text))"))
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  users           users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([provider_id, provider], map: "identities_provider_id_provider_unique")
+  @@index([email])
+  @@index([user_id])
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model instances {
+  id              String    @id @db.Uuid
+  uuid            String?   @db.Uuid
+  raw_base_config String?
+  created_at      DateTime? @db.Timestamptz(6)
+  updated_at      DateTime? @db.Timestamptz(6)
+
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model mfa_amr_claims {
+  session_id            String   @db.Uuid
+  created_at            DateTime @db.Timestamptz(6)
+  updated_at            DateTime @db.Timestamptz(6)
+  authentication_method String
+  id                    String   @id(map: "amr_id_pk") @db.Uuid
+  sessions              sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([session_id, authentication_method], map: "mfa_amr_claims_session_id_authentication_method_pkey")
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model mfa_challenges {
+  id                     String      @id @db.Uuid
+  factor_id              String      @db.Uuid
+  created_at             DateTime    @db.Timestamptz(6)
+  verified_at            DateTime?   @db.Timestamptz(6)
+  ip_address             String      @db.Inet
+  otp_code               String?
+  web_authn_session_data Json?
+  mfa_factors            mfa_factors @relation(fields: [factor_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "mfa_challenges_auth_factor_id_fkey")
+
+  @@index([created_at(sort: Desc)], map: "mfa_challenge_created_at_idx")
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model mfa_factors {
+  id                   String           @id @db.Uuid
+  user_id              String           @db.Uuid
+  friendly_name        String?
+  factor_type          factor_type
+  status               factor_status
+  created_at           DateTime         @db.Timestamptz(6)
+  updated_at           DateTime         @db.Timestamptz(6)
+  secret               String?
+  phone                String?
+  last_challenged_at   DateTime?        @unique @db.Timestamptz(6)
+  web_authn_credential Json?
+  web_authn_aaguid     String?          @db.Uuid
+  mfa_challenges       mfa_challenges[]
+  users                users            @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, phone], map: "unique_phone_factor_per_user")
+  @@index([user_id, created_at], map: "factor_id_created_at_idx")
+  @@index([user_id])
+  @@schema("auth")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model one_time_tokens {
+  id         String              @id @db.Uuid
+  user_id    String              @db.Uuid
+  token_type one_time_token_type
+  token_hash String
+  relates_to String
+  created_at DateTime            @default(now()) @db.Timestamp(6)
+  updated_at DateTime            @default(now()) @db.Timestamp(6)
+  users      users               @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, token_type])
+  @@index([relates_to], map: "one_time_tokens_relates_to_hash_idx", type: Hash)
+  @@index([token_hash], map: "one_time_tokens_token_hash_hash_idx", type: Hash)
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model refresh_tokens {
+  instance_id String?   @db.Uuid
+  id          BigInt    @id @default(autoincrement())
+  token       String?   @unique(map: "refresh_tokens_token_unique") @db.VarChar(255)
+  user_id     String?   @db.VarChar(255)
+  revoked     Boolean?
+  created_at  DateTime? @db.Timestamptz(6)
+  updated_at  DateTime? @db.Timestamptz(6)
+  parent      String?   @db.VarChar(255)
+  session_id  String?   @db.Uuid
+  sessions    sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([instance_id])
+  @@index([instance_id, user_id])
+  @@index([parent])
+  @@index([session_id, revoked])
+  @@index([updated_at(sort: Desc)])
+  @@schema("auth")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model saml_providers {
+  id                String        @id @db.Uuid
+  sso_provider_id   String        @db.Uuid
+  entity_id         String        @unique
+  metadata_xml      String
+  metadata_url      String?
+  attribute_mapping Json?
+  created_at        DateTime?     @db.Timestamptz(6)
+  updated_at        DateTime?     @db.Timestamptz(6)
+  name_id_format    String?
+  sso_providers     sso_providers @relation(fields: [sso_provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([sso_provider_id])
+  @@schema("auth")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model saml_relay_states {
+  id              String        @id @db.Uuid
+  sso_provider_id String        @db.Uuid
+  request_id      String
+  for_email       String?
+  redirect_to     String?
+  created_at      DateTime?     @db.Timestamptz(6)
+  updated_at      DateTime?     @db.Timestamptz(6)
+  flow_state_id   String?       @db.Uuid
+  flow_state      flow_state?   @relation(fields: [flow_state_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sso_providers   sso_providers @relation(fields: [sso_provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)])
+  @@index([for_email])
+  @@index([sso_provider_id])
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model schema_migrations {
+  version String @id @db.VarChar(255)
+
+  @@schema("auth")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sessions {
+  id             String           @id @db.Uuid
+  user_id        String           @db.Uuid
+  created_at     DateTime?        @db.Timestamptz(6)
+  updated_at     DateTime?        @db.Timestamptz(6)
+  factor_id      String?          @db.Uuid
+  aal            aal_level?
+  not_after      DateTime?        @db.Timestamptz(6)
+  refreshed_at   DateTime?        @db.Timestamp(6)
+  user_agent     String?
+  ip             String?          @db.Inet
+  tag            String?
+  mfa_amr_claims mfa_amr_claims[]
+  refresh_tokens refresh_tokens[]
+  users          users            @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([not_after(sort: Desc)])
+  @@index([user_id])
+  @@index([user_id, created_at], map: "user_id_created_at_idx")
+  @@schema("auth")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model sso_domains {
+  id              String        @id @db.Uuid
+  sso_provider_id String        @db.Uuid
+  domain          String
+  created_at      DateTime?     @db.Timestamptz(6)
+  updated_at      DateTime?     @db.Timestamptz(6)
+  sso_providers   sso_providers @relation(fields: [sso_provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([sso_provider_id])
+  @@schema("auth")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model sso_providers {
+  id                String              @id @db.Uuid
+  resource_id       String?
+  created_at        DateTime?           @db.Timestamptz(6)
+  updated_at        DateTime?           @db.Timestamptz(6)
+  saml_providers    saml_providers[]
+  saml_relay_states saml_relay_states[]
+  sso_domains       sso_domains[]
+
+  @@schema("auth")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model users {
+  instance_id                 String?           @db.Uuid
+  id                          String            @id @db.Uuid
+  aud                         String?           @db.VarChar(255)
+  role                        String?           @db.VarChar(255)
+  email                       String?           @db.VarChar(255)
+  encrypted_password          String?           @db.VarChar(255)
+  email_confirmed_at          DateTime?         @db.Timestamptz(6)
+  invited_at                  DateTime?         @db.Timestamptz(6)
+  confirmation_token          String?           @db.VarChar(255)
+  confirmation_sent_at        DateTime?         @db.Timestamptz(6)
+  recovery_token              String?           @db.VarChar(255)
+  recovery_sent_at            DateTime?         @db.Timestamptz(6)
+  email_change_token_new      String?           @db.VarChar(255)
+  email_change                String?           @db.VarChar(255)
+  email_change_sent_at        DateTime?         @db.Timestamptz(6)
+  last_sign_in_at             DateTime?         @db.Timestamptz(6)
+  raw_app_meta_data           Json?
+  raw_user_meta_data          Json?
+  is_super_admin              Boolean?
+  created_at                  DateTime?         @db.Timestamptz(6)
+  updated_at                  DateTime?         @db.Timestamptz(6)
+  phone                       String?           @unique
+  phone_confirmed_at          DateTime?         @db.Timestamptz(6)
+  phone_change                String?           @default("")
+  phone_change_token          String?           @default("") @db.VarChar(255)
+  phone_change_sent_at        DateTime?         @db.Timestamptz(6)
+  confirmed_at                DateTime?         @default(dbgenerated("LEAST(email_confirmed_at, phone_confirmed_at)")) @db.Timestamptz(6)
+  email_change_token_current  String?           @default("") @db.VarChar(255)
+  email_change_confirm_status Int?              @default(0) @db.SmallInt
+  banned_until                DateTime?         @db.Timestamptz(6)
+  reauthentication_token      String?           @default("") @db.VarChar(255)
+  reauthentication_sent_at    DateTime?         @db.Timestamptz(6)
+  is_sso_user                 Boolean           @default(false)
+  deleted_at                  DateTime?         @db.Timestamptz(6)
+  is_anonymous                Boolean           @default(false)
+  identities                  identities[]
+  mfa_factors                 mfa_factors[]
+  one_time_tokens             one_time_tokens[]
+  sessions                    sessions[]
+
+  @@index([instance_id])
+  @@index([is_anonymous])
+  @@schema("auth")
+}
+
+model attribute_values {
+  attribute_value_id Int                  @id @default(autoincrement())
+  attribute_id       Int
+  attribute_value    String
+  attributes         attributes           @relation(fields: [attribute_id], references: [attribute_id])
+  material_attribute material_attribute[]
+  product_attribute  product_attribute[]
+
+  @@index([attribute_id])
+  @@schema("public")
+}
+
+model attributes {
+  attribute_id     Int                @id @default(autoincrement())
+  attribute_name   String
+  attribute_values attribute_values[]
+
+  @@schema("public")
+}
+
+model audit_event {
+  audit_event_id Int           @id @default(autoincrement())
+  audit_descr    String        @db.VarChar(250)
+  audit_trail    audit_trail[]
+
+  @@schema("public")
+}
+
+model audit_trail {
+  audit_trail_id Int         @id @default(autoincrement())
+  audit_date     DateTime
+  audit_user     String
+  table_name     String
+  table_id       Int
+  audit_reason   String?     @db.VarChar(2000)
+  audit_event_id Int
+  audit_event    audit_event @relation(fields: [audit_event_id], references: [audit_event_id])
+
+  @@index([audit_event_id])
+  @@schema("public")
+}
+
+model bank_trans {
+  bank_trans_id      Int                  @id @default(autoincrement())
+  bank_trans_number  String?
+  bank_trans_type_id Int
+  order_header_id    Int?
+  customer_id        Int
+  debit_amount       Float
+  credit_amount      Float
+  discount_amount    Float
+  applied_amount     Float
+  applied_discount   Float
+  tax_amount         Float
+  status             String               @db.VarChar(10)
+  effective_date     DateTime
+  capture_date       DateTime
+  capture_user       String
+  reference          String?              @db.VarChar(500)
+  bank_trans_type    bank_trans_type      @relation(fields: [bank_trans_type_id], references: [bank_trans_type_id])
+  bank_trans_payment bank_trans_payment[]
+
+  @@index([customer_id], map: "bank_trans_bank_account_header_id_idx")
+  @@index([bank_trans_type_id])
+  @@index([order_header_id])
+  @@schema("public")
+}
+
+model bank_trans_link {
+  bank_trans_link_id Int      @id @default(autoincrement())
+  bank_trans_id      Int
+  link_trans_id      Int
+  trans_amount       Float
+  tax_amount         Float
+  discount_amount    Float
+  note               String?  @db.VarChar(500)
+  update_date        DateTime
+  update_user        String
+
+  @@index([bank_trans_id])
+  @@schema("public")
+}
+
+model bank_trans_month {
+  customer_id     Int
+  bank_mm         Int
+  bank_yr         Int
+  open_balance    Float
+  debit_change    Float
+  credit_change   Float
+  closing_balance Float
+  invoice_total   Float
+  cnote_total     Float
+  discount_total  Float
+  journal_total   Float
+  payment_total   Float
+  refund_total    Float
+  days_30         Float
+  days_60         Float
+  days_90         Float
+  days_120        Float
+
+  @@unique([customer_id, bank_mm, bank_yr], map: "bank_trans_month_bank_account_header_id_bank_account_mm_ban_key")
+  @@schema("public")
+}
+
+model bank_trans_payment {
+  bank_trans_payment_id Int          @id @default(autoincrement())
+  order_header_id       Int
+  bank_trans_id         Int
+  payment_type_id       Int
+  payment_amount        Float
+  change_amount         Float
+  bank_trans            bank_trans   @relation(fields: [bank_trans_id], references: [bank_trans_id])
+  order_header          order_header @relation(fields: [order_header_id], references: [order_header_id])
+  payment_type          payment_type @relation(fields: [payment_type_id], references: [payment_type_id])
+
+  @@index([bank_trans_id])
+  @@index([order_header_id])
+  @@index([payment_type_id])
+  @@schema("public")
+}
+
+model bank_trans_type {
+  bank_trans_type_id    Int          @id @default(autoincrement())
+  bank_trans_type_descr String
+  bank_trans            bank_trans[]
+
+  @@schema("public")
+}
+
+model bom {
+  bom_id       Int            @id @default(autoincrement())
+  bom_name     String
+  product_id   Int
+  bom_material bom_material[]
+
+  @@schema("public")
+}
+
+model bom_material {
+  bom_id               Int
+  material_category_id Int
+  bom_qty              Float
+  bom                  bom               @relation(fields: [bom_id], references: [bom_id])
+  material_category    material_category @relation(fields: [material_category_id], references: [material_category_id])
+
+  @@unique([bom_id, material_category_id])
+  @@schema("public")
+}
+
+model close_trading {
+  close_trading_id    Int                  @id @default(autoincrement())
+  location_id         Int
+  transaction_type_id Int
+  till_id             Int
+  trading_session_id  Int
+  batch_number        Int
+  update_user         String
+  update_date         DateTime
+  location            location             @relation(fields: [location_id], references: [location_id])
+  till                till                 @relation(fields: [till_id], references: [till_id])
+  transaction_type    transaction_type     @relation(fields: [transaction_type_id], references: [transaction_type_id])
+  close_trading_item  close_trading_item[]
+
+  @@index([location_id])
+  @@index([till_id])
+  @@index([transaction_type_id])
+  @@schema("public")
+}
+
+model close_trading_item {
+  close_trading_item_id Int           @id @default(autoincrement())
+  close_trading_id      Int
+  payment_type_id       Int
+  payment_amount        Float
+  actual_amount         Float
+  reason                String
+  close_trading         close_trading @relation(fields: [close_trading_id], references: [close_trading_id])
+  payment_type          payment_type  @relation(fields: [payment_type_id], references: [payment_type_id])
+
+  @@index([close_trading_id])
+  @@index([payment_type_id])
+  @@schema("public")
+}
+
+model company {
+  company_name   String   @id
+  company_UUID   String?
+  first_name     String
+  last_name      String
+  vat_number     String?
+  contact_number String
+  primary_email  String
+  street1        String
+  street2        String?
+  suburb         String?
+  city           String
+  state          String?
+  post_code      String?
+  country_id     Int
+  update_date    DateTime
+  update_user    String
+  country        country  @relation(fields: [country_id], references: [country_id])
+
+  @@index([country_id])
+  @@schema("public")
+}
+
+model company_bank_account {
+  bank_account_id    Int      @id(map: "bank_account_pkey") @default(autoincrement())
+  bank_branch        String
+  currency_id        Int
+  active             Boolean
+  account_number     String
+  bank_account__type String
+  update_user        String
+  update_date        DateTime
+  currency           currency @relation(fields: [currency_id], references: [currency_id], map: "bank_account_currency_id_fkey")
+
+  @@index([bank_branch], map: "bank_account_bank_branch_id_idx")
+  @@index([currency_id], map: "bank_account_currency_id_idx")
+  @@schema("public")
+}
+
+model country {
+  country_id   Int       @id @default(autoincrement())
+  country_name String
+  company      company[]
+
+  @@schema("public")
+}
+
+model currency {
+  currency_id          Int                    @id @default(autoincrement())
+  currency_name        String
+  is_default           Boolean
+  company_bank_account company_bank_account[]
+  customer             customer[]
+  customer_group       customer_group[]
+  location             location[]
+  order_header         order_header[]
+  supplier             supplier[]
+
+  @@schema("public")
+}
+
+model customer {
+  customer_id                Int                @id @default(autoincrement())
+  contact_number             String?
+  alternative_contact_number String?
+  web_url                    String?
+  primary_email              String?
+  secondary_email            String?
+  update_date                DateTime
+  update_user                String
+  is_sundry                  Boolean?
+  vat_number                 String?
+  id_number                  String?
+  first_name                 String?
+  middle_name                String?
+  last_name                  String?
+  gender                     String?            @db.VarChar(1)
+  tax_rate_id                Int?
+  sales_rep_id               Int?
+  capture_date               DateTime
+  currency_id                Int?
+  terms_id                   Int?
+  customer_group_id          Int?
+  trade_disc_perc            Float?
+  target_margin              Float?
+  price_list_id              Int?
+  account_number             String?
+  credit_limit               Float?
+  account_on_hold            Boolean?
+  currency                   currency?          @relation(fields: [currency_id], references: [currency_id])
+  customer_group             customer_group?    @relation(fields: [customer_group_id], references: [customer_group_id])
+  price_list                 price_list?        @relation(fields: [price_list_id], references: [price_list_id])
+  employee                   employee?          @relation(fields: [sales_rep_id], references: [employee_id])
+  tax_rate                   tax_rate?          @relation(fields: [tax_rate_id], references: [tax_rate_id])
+  terms                      terms?             @relation(fields: [terms_id], references: [terms_id])
+  customer_address           customer_address[]
+
+  @@index([currency_id])
+  @@index([customer_group_id])
+  @@index([price_list_id])
+  @@index([sales_rep_id])
+  @@index([tax_rate_id])
+  @@index([terms_id])
+  @@schema("public")
+}
+
+model customer_address {
+  customer_address_id Int      @id(map: "customer_address_pkey_1") @default(autoincrement())
+  customer_id         Int
+  address_type        String?  @db.VarChar(1)
+  street1             String
+  street2             String?
+  suburb              String?
+  city                String
+  state               String?
+  post_code           String?
+  country_id          Int
+  update_date         DateTime
+  update_user         String
+  customer            customer @relation(fields: [customer_id], references: [customer_id])
+
+  @@unique([customer_id, address_type], map: "customer_address_idx_2")
+  @@index([country_id], map: "customer_address_country_id_idx_1")
+  @@schema("public")
+}
+
+model customer_group {
+  customer_group_id   Int         @id @default(autoincrement())
+  customer_group_name String
+  update_date         DateTime
+  update_user         String
+  is_default          Boolean
+  trade_disc_perc     Float?
+  terms_id            Int?
+  tax_rate_id         Int?
+  currency_id         Int?
+  price_list_id       Int?
+  customer            customer[]
+  currency            currency?   @relation(fields: [currency_id], references: [currency_id])
+  price_list          price_list? @relation(fields: [price_list_id], references: [price_list_id])
+  tax_rate            tax_rate?   @relation(fields: [tax_rate_id], references: [tax_rate_id])
+  terms               terms?      @relation(fields: [terms_id], references: [terms_id])
+
+  @@index([currency_id])
+  @@index([price_list_id])
+  @@index([tax_rate_id])
+  @@index([terms_id])
+  @@schema("public")
+}
+
+model employee {
+  employee_id     Int             @id @default(autoincrement())
+  first_name      String?
+  middle_name     String?
+  last_name       String?
+  employee_number String?
+  customer        customer[]
+  employee_dept   employee_dept[]
+
+  @@schema("public")
+}
+
+model employee_dept {
+  employee_id       Int
+  location_id       Int
+  employee_title_id Int
+  employee          employee       @relation(fields: [employee_id], references: [employee_id])
+  employee_title    employee_title @relation(fields: [employee_title_id], references: [employee_title_id])
+  location          location       @relation(fields: [location_id], references: [location_id])
+
+  @@unique([employee_id, location_id, employee_title_id])
+  @@index([employee_title_id])
+  @@index([location_id])
+  @@schema("public")
+}
+
+model employee_title {
+  employee_title_id   Int             @id @default(autoincrement())
+  employee_title_name String
+  employee_dept       employee_dept[]
+
+  @@schema("public")
+}
+
+model inventory {
+  inventory_id           Int                    @id @default(autoincrement())
+  product_id             Int
+  location_id            Int
+  from_date              DateTime
+  inventory_date         DateTime
+  invoices               Int                    @default(0)
+  credit_notes           Int                    @default(0)
+  supplier_receipts      Int                    @default(0)
+  supplier_returns       Int                    @default(0)
+  adjusts                Int                    @default(0)
+  stock_issues           Int                    @default(0)
+  stock_receipts         Int                    @default(0)
+  invoices_cost          Float                  @default(0)
+  credit_notes_cost      Float                  @default(0)
+  supplier_receipts_cost Float                  @default(0)
+  supplier_returns_cost  Float                  @default(0)
+  adjusts_cost           Float                  @default(0)
+  stock_issues_cost      Float                  @default(0)
+  stock_receipts_cost    Float                  @default(0)
+  soh_units              Int                    @default(0)
+  soh_cost               Float                  @default(0)
+  selling_excl           Float                  @default(0)
+  average_cost           Float                  @default(0)
+  location               location               @relation(fields: [location_id], references: [location_id])
+  product                product                @relation(fields: [product_id], references: [product_id])
+  inventory_adjust       inventory_adjust[]
+  inventory_order_item   inventory_order_item[]
+
+  @@index([inventory_date])
+  @@index([location_id])
+  @@index([product_id])
+  @@index([product_id, location_id, inventory_date, from_date])
+  @@schema("public")
+}
+
+model inventory_adjust {
+  inventory_adjust_id Int       @id @default(autoincrement())
+  inventory_id        Int
+  adjust_date         DateTime
+  trx_qty             Int
+  trx_value           Float
+  opening_soh         Int
+  opening_soh_cost    Float
+  closing_soh         Int
+  closing_soh_cost    Float
+  adjust_reason       String?   @db.VarChar(250)
+  adjust_user         String?
+  inventory           inventory @relation(fields: [inventory_id], references: [inventory_id])
+
+  @@index([inventory_id])
+  @@schema("public")
+}
+
+model inventory_order_item {
+  inventory_order_item_id Int        @id @default(autoincrement())
+  order_item_id           Int
+  inventory_id            Int
+  opening_soh             Int
+  opening_soh_cost        Float
+  closing_soh             Int
+  closing_soh_cost        Float
+  inventory               inventory  @relation(fields: [inventory_id], references: [inventory_id])
+  order_item              order_item @relation(fields: [order_item_id], references: [order_item_id])
+
+  @@index([inventory_id])
+  @@index([order_item_id])
+  @@schema("public")
+}
+
+model location {
+  location_id                Int                   @id @default(autoincrement())
+  location_name              String
+  location_descr             String?
+  update_user                String
+  currency_id                Int
+  internal_order_auto        Boolean
+  consolidate_tills          Boolean
+  contact_number             String?
+  alternative_contact_number String?
+  web_url                    String?
+  primary_email              String?
+  secondary_email            String?
+  remote_update              DateTime?
+  update_date                DateTime
+  close_trading              close_trading[]
+  employee_dept              employee_dept[]
+  inventory                  inventory[]
+  currency                   currency              @relation(fields: [currency_id], references: [currency_id])
+  location_address           location_address?
+  location_hierarchy         location_hierarchy[]
+  material_inventory         material_inventory[]
+  open_trading               open_trading[]
+  stock_target_levels        stock_target_levels[]
+  turnover_budget            turnover_budget[]
+
+  @@index([currency_id])
+  @@schema("public")
+}
+
+model location_address {
+  location_address_id Int      @id @default(autoincrement())
+  location_id         Int      @unique
+  street1             String
+  street2             String?
+  suburb              String?
+  city                String
+  state               String?
+  post_code           String?
+  country_id          Int
+  update_date         DateTime
+  update_user         String
+  location            location @relation(fields: [location_id], references: [location_id])
+
+  @@schema("public")
+}
+
+model location_hierarchy {
+  location_id Int
+  parent_id   Int
+  seq_no      Int?
+  depth       Int      @default(0)
+  location    location @relation(fields: [location_id], references: [location_id])
+
+  @@unique([location_id, parent_id])
+  @@schema("public")
+}
+
+model material {
+  material_id              Int                        @id @default(autoincrement())
+  material_code            String                     @unique(map: "material_code_unique")
+  material_name            String
+  material_description     String
+  material_category_id     Int?
+  order_uom_id             Int
+  min_order_qty            Float?
+  supplier_id              Int
+  supplier_code            String?
+  cost                     Float?
+  length_cm                Float?
+  width_cm                 Float?
+  height_cm                Float?
+  volume                   Float?
+  weight_grams             Float?
+  shelflife_days           Float?
+  leadtime_days            Int?
+  material_category        material_category?         @relation(fields: [material_category_id], references: [material_category_id])
+  material_attribute       material_attribute[]
+  material_inventory       material_inventory[]
+  material_spec            material_spec?
+  storage                  storage?
+  supplier_materials_stock supplier_materials_stock[]
+
+  @@index([material_category_id])
+  @@schema("public")
+}
+
+model material_attribute {
+  material_id        Int
+  attribute_value_id Int
+  attribute_values   attribute_values @relation(fields: [attribute_value_id], references: [attribute_value_id])
+  material           material         @relation(fields: [material_id], references: [material_id])
+
+  @@unique([material_id, attribute_value_id])
+  @@index([attribute_value_id])
+  @@index([material_id])
+  @@schema("public")
+}
+
+model material_category {
+  material_category_id    Int            @id @default(autoincrement())
+  material_category_name  String
+  material_category_descr String?
+  material_category_code  String?
+  BOM_uom_id              Int
+  update_date             DateTime
+  update_user             String
+  inventory_type          String         @db.VarChar(10)
+  bom_material            bom_material[]
+  material                material[]
+
+  @@schema("public")
+}
+
+model material_category_attribute {
+  material_category_id Int
+  attribute_id         Int
+
+  @@unique([material_category_id, attribute_id])
+  @@index([attribute_id])
+  @@index([material_category_id])
+  @@schema("public")
+}
+
+model material_inventory {
+  inventory_id           Int      @id @default(autoincrement())
+  material_id            Int
+  location_id            Int
+  from_date              DateTime
+  inventory_date         DateTime
+  supplier_receipts      Int      @default(0)
+  supplier_returns       Int      @default(0)
+  adjusts                Int      @default(0)
+  stock_issues           Int      @default(0)
+  stock_receipts         Int      @default(0)
+  supplier_receipts_cost Float    @default(0)
+  supplier_returns_cost  Float    @default(0)
+  adjusts_cost           Float    @default(0)
+  stock_issues_cost      Float    @default(0)
+  stock_receipts_cost    Float    @default(0)
+  soh_units              Int      @default(0)
+  soh_cost               Float    @default(0)
+  average_cost           Float    @default(0)
+  location               location @relation(fields: [location_id], references: [location_id])
+  material               material @relation(fields: [material_id], references: [material_id])
+
+  @@index([inventory_date])
+  @@index([location_id])
+  @@index([material_id])
+  @@index([material_id, location_id, inventory_date, from_date])
+  @@schema("public")
+}
+
+model material_spec {
+  material_id                Int      @unique
+  iso_14001                  Boolean?
+  brand                      String?
+  end_use                    String?
+  selvedge_useable_width_cm  Int?
+  composition_type           String?
+  design_type                String?
+  care_code_washable_celsius String?
+  care_code_bleach           String?
+  designname                 String?
+  env_standards              Json?    @db.Json
+  cat_carecodes              Json?    @db.Json
+  colour_type_description    String?
+  total_composition          String?
+  material_spec_id           Int      @id @default(autoincrement())
+  material                   material @relation(fields: [material_id], references: [material_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model open_trading {
+  open_trading_id     Int              @id @default(autoincrement())
+  location_id         Int
+  transaction_type_id Int
+  till_id             Int
+  trading_session_id  Int
+  batch_number        Int
+  update_user         String
+  update_date         DateTime
+  location            location         @relation(fields: [location_id], references: [location_id])
+  till                till             @relation(fields: [till_id], references: [till_id])
+  transaction_type    transaction_type     @relation(fields: [transaction_type_id], references: [transaction_type_id])
+
+  @@index([location_id])
+  @@index([till_id])
+  @@index([transaction_type_id])
+  @@schema("public")
+}
+
+model order_address {
+  order_address_id Int          @id @default(autoincrement())
+  address_type     String?      @db.VarChar(1)
+  street1          String
+  street2          String?
+  suburb           String?
+  city             String
+  state            String?
+  post_code        String?
+  country_id       Int
+  order_header_id  Int
+  order_header     order_header @relation(fields: [order_header_id], references: [order_header_id])
+
+  @@index([order_address_id])
+  @@index([order_header_id, address_type])
+  @@schema("public")
+}
+
+model order_cnote {
+  order_cnote_id   Int                @id
+  order_invoice_id Int
+  order_header     order_header       @relation(fields: [order_invoice_id], references: [order_header_id])
+  order_cnote_item order_cnote_item[]
+
+  @@index([order_invoice_id])
+  @@schema("public")
+}
+
+model order_cnote_item {
+  order_cnote_item_id Int         @id @default(autoincrement())
+  order_cnote_id      Int
+  order_item_id       Int
+  quantity            Int
+  order_cnote         order_cnote @relation(fields: [order_cnote_id], references: [order_cnote_id])
+  order_item          order_item  @relation(fields: [order_item_id], references: [order_item_id])
+
+  @@index([order_cnote_id])
+  @@index([order_item_id])
+  @@schema("public")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model order_comment {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_header_id Int
+  created_by      String       @db.Uuid
+  created_at      DateTime?    @default(now()) @db.Timestamp(6)
+  comment_text    String
+  order_header    order_header @relation(fields: [order_header_id], references: [order_header_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model order_delivery {
+  order_delivery_id   Int                   @id
+  order_header_id     Int
+  status              String?               @db.VarChar(10)
+  delivery_method     String
+  status_date         DateTime
+  order_header        order_header          @relation(fields: [order_header_id], references: [order_header_id])
+  order_delivery_item order_delivery_item[]
+
+  @@index([order_header_id])
+  @@schema("public")
+}
+
+model order_delivery_item {
+  order_delivery_item_id Int            @id @default(autoincrement())
+  order_delivery_id      Int
+  order_item_id          Int
+  quantity               Int
+  disputed_quantity      Int
+  disputed_notes         String
+  order_delivery         order_delivery @relation(fields: [order_delivery_id], references: [order_delivery_id])
+  order_item             order_item     @relation(fields: [order_item_id], references: [order_item_id])
+
+  @@index([order_delivery_id])
+  @@index([order_item_id])
+  @@schema("public")
+}
+
+model order_header {
+  order_header_id     Int                  @id @default(autoincrement())
+  order_number        String
+  transaction_type_id Int
+  status              String?              @db.VarChar(10)
+  payment_status      String?              @db.VarChar(10)
+  linked_header_id    Int?
+  location_id         Int
+  party_id            Int?
+  other_location_id   Int?
+  order_date          DateTime
+  due_date            DateTime
+  reference           String?
+  total_excl          Float?
+  total_discount      Float?
+  total_tax           Float?
+  total_incl          Float?
+  currency_id         Int?
+  terms_id            Int?
+  tax_rate_id         Int
+  sales_rep_id        Int?
+  update_date         DateTime
+  update_user         String
+  trade_disc_perc     Float?
+  instructions        String?              @db.VarChar(2000)
+  bank_trans_payment  bank_trans_payment[]
+  order_address       order_address[]
+  order_cnote         order_cnote[]
+  order_comment       order_comment[]
+  order_delivery      order_delivery[]
+  currency            currency?            @relation(fields: [currency_id], references: [currency_id])
+  tax_rate            tax_rate             @relation(fields: [tax_rate_id], references: [tax_rate_id])
+  transaction_type    transaction_type     @relation(fields: [transaction_type_id], references: [transaction_type_id])
+  order_item          order_item[]
+  order_note          order_note[]
+  order_payment       order_payment[]
+  order_receipt       order_receipt[]
+  order_return        order_return[]
+  order_status        order_status[]
+
+  @@index([currency_id])
+  @@index([location_id])
+  @@index([order_date, transaction_type_id, location_id, order_header_id])
+  @@index([other_location_id])
+  @@index([party_id])
+  @@index([sales_rep_id])
+  @@index([tax_rate_id])
+  @@index([terms_id])
+  @@index([transaction_type_id])
+  @@schema("public")
+}
+
+model order_item {
+  order_item_id        Int                    @id @default(autoincrement())
+  order_header_id      Int
+  original_item_id     Int?
+  product_id           Int
+  quantity             Int
+  quantity_uom         Int
+  price_list_id        Int?
+  unit_price           Float
+  tax_rate_id          Int
+  tax_perc             Float
+  discount_perc        Float
+  total_excl           Float
+  total_discount       Float
+  total_tax            Float
+  total_incl           Float
+  cost_price           Float
+  inventory_order_item inventory_order_item[]
+  order_cnote_item     order_cnote_item[]
+  order_delivery_item  order_delivery_item[]
+  order_header         order_header           @relation(fields: [order_header_id], references: [order_header_id])
+  product              product                @relation(fields: [product_id], references: [product_id])
+  tax_rate             tax_rate               @relation(fields: [tax_rate_id], references: [tax_rate_id])
+  order_receipt_item   order_receipt_item[]
+
+  @@index([order_header_id])
+  @@index([order_header_id, product_id])
+  @@index([price_list_id])
+  @@index([product_id])
+  @@index([tax_rate_id])
+  @@schema("public")
+}
+
+model order_note {
+  order_note_id   Int          @id @default(autoincrement())
+  order_header_id Int
+  update_date     DateTime
+  update_user     String
+  note            String       @db.VarChar(1000)
+  order_header    order_header @relation(fields: [order_header_id], references: [order_header_id])
+
+  @@index([order_header_id])
+  @@schema("public")
+}
+
+model order_payment {
+  order_payment_id Int          @id @default(autoincrement())
+  order_header_id  Int
+  payment_type_id  Int
+  payment_amount   Float
+  change_amount    Float
+  order_header     order_header @relation(fields: [order_header_id], references: [order_header_id])
+  payment_type     payment_type @relation(fields: [payment_type_id], references: [payment_type_id])
+
+  @@index([order_header_id])
+  @@index([payment_type_id])
+  @@schema("public")
+}
+
+model order_receipt {
+  order_receipt_id   Int                  @id
+  order_header_id    Int
+  receipt_method     String
+  status_date        DateTime
+  order_header       order_header         @relation(fields: [order_header_id], references: [order_header_id])
+  order_receipt_item order_receipt_item[]
+
+  @@index([order_header_id])
+  @@schema("public")
+}
+
+model order_receipt_item {
+  order_receipt_item_id Int           @id @default(autoincrement())
+  order_receipt_id      Int
+  order_item_id         Int
+  quantity              Int
+  disputed_quantity     Int
+  disputed_notes        String
+  order_item            order_item    @relation(fields: [order_item_id], references: [order_item_id])
+  order_receipt         order_receipt @relation(fields: [order_receipt_id], references: [order_receipt_id])
+
+  @@index([order_item_id])
+  @@index([order_receipt_id])
+  @@schema("public")
+}
+
+model order_return {
+  order_return_id Int          @id
+  order_header_id Int
+  return_method   String
+  status_date     DateTime
+  order_header    order_header @relation(fields: [order_header_id], references: [order_header_id])
+
+  @@index([order_header_id])
+  @@schema("public")
+}
+
+model order_return_item {
+  order_return_item_id Int    @id @default(autoincrement())
+  order_return_id      Int
+  order_item_id        Int
+  quantity             Int
+  disputed_quantity    Int
+  disputed_notes       String
+
+  @@index([order_item_id])
+  @@index([order_return_id])
+  @@schema("public")
+}
+
+model order_status {
+  order_status_id Int          @id @default(autoincrement())
+  order_header_id Int
+  status_date     DateTime
+  status_from     String       @db.VarChar(50)
+  status_to       String       @db.VarChar(50)
+  update_user     String
+  order_header    order_header @relation(fields: [order_header_id], references: [order_header_id])
+
+  @@index([order_header_id])
+  @@schema("public")
+}
+
+model payment_type {
+  payment_type_id    Int                  @id @default(autoincrement())
+  payment_type_descr String
+  bank_trans_payment bank_trans_payment[]
+  close_trading_item close_trading_item[]
+  order_payment      order_payment[]
+
+  @@schema("public")
+}
+
+model price_list {
+  price_list_id     Int                 @id @default(autoincrement())
+  price_list_name   String
+  start_date        DateTime
+  end_date          DateTime?
+  update_date       DateTime
+  update_user       String
+  status            String              @db.VarChar(10)
+  is_default        Boolean             @default(false)
+  customer          customer[]
+  customer_group    customer_group[]
+  price_list_detail price_list_detail[]
+
+  @@schema("public")
+}
+
+model price_list_detail {
+  price_list_detail_id Int        @id @default(autoincrement())
+  price_list_id        Int
+  product_id           Int
+  selling_excl         Float?
+  round_to             Float?
+  price_list           price_list @relation(fields: [price_list_id], references: [price_list_id])
+  product              product    @relation(fields: [product_id], references: [product_id])
+
+  @@unique([price_list_id, product_id])
+  @@index([product_id])
+  @@schema("public")
+}
+
+model price_list_locations {
+  price_list_id Int
+  location_id   Int
+
+  @@id([price_list_id, location_id])
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product {
+  product_id          Int                   @id @default(autoincrement())
+  product_category_id Int
+  update_date         DateTime
+  update_user         String?
+  product_name        String?               @db.VarChar(250)
+  product_descr       String?               @db.VarChar(1000)
+  status              String?               @db.VarChar(10)
+  skuno               String?
+  length_cm           Float?
+  width_cm            Float?
+  height_cm           Float?
+  volume              Float?
+  weight_grams        Float?
+  lifespan_days       Float?
+  tender_swap         Boolean?
+  non_stock_item      Boolean?
+  tax_rate_id         Int?
+  inventory           inventory[]
+  order_item          order_item[]
+  price_list_detail   price_list_detail[]
+  product_category    product_category      @relation(fields: [product_category_id], references: [product_category_id])
+  tax_rate            tax_rate?             @relation(fields: [tax_rate_id], references: [tax_rate_id])
+  product_attribute   product_attribute[]
+  product_image       product_image[]
+  stock_target_levels stock_target_levels[]
+  supplier_cost       supplier_cost[]
+
+  @@index([product_category_id])
+  @@index([product_id, product_category_id])
+  @@index([skuno, product_name])
+  @@index([tax_rate_id])
+  @@schema("public")
+}
+
+model product_attribute {
+  product_id         Int
+  attribute_value_id Int
+  attribute_values   attribute_values @relation(fields: [attribute_value_id], references: [attribute_value_id])
+  product            product          @relation(fields: [product_id], references: [product_id])
+
+  @@unique([product_id, attribute_value_id])
+  @@index([attribute_value_id])
+  @@index([product_id])
+  @@schema("public")
+}
+
+model product_category {
+  product_category_id          Int            @id @default(autoincrement())
+  product_category_name        String
+  product_category_descr       String?
+  product_category_code        String?
+  update_date                  DateTime
+  update_user                  String
+  status                       String         @db.VarChar(10)
+  auto_generate_name_template  String?
+  auto_generate_descr_template String?
+  auto_generate_skuno_template String?
+  product_group_id             Int?
+  max_discount_perc            Float?
+  lifespan_days                Float?
+  product                      product[]
+  product_group                product_group? @relation(fields: [product_group_id], references: [product_group_id])
+
+  @@index([product_group_id, product_category_id])
+  @@schema("public")
+}
+
+model product_category_attribute {
+  product_category_id Int
+  attribute_id        Int
+
+  @@unique([product_category_id, attribute_id])
+  @@schema("public")
+}
+
+model product_group {
+  product_group_id    Int                @id @default(autoincrement())
+  product_group_name  String
+  product_group_descr String?
+  update_date         DateTime
+  update_user         String
+  is_default          Boolean
+  product_category    product_category[]
+
+  @@schema("public")
+}
+
+model product_image {
+  id                BigInt   @id @default(autoincrement())
+  product_id        Int?
+  storage_object_id String?  @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  sort_order        Int?     @default(10)
+  url               String?  @db.VarChar
+  product           product? @relation(fields: [product_id], references: [product_id], onDelete: NoAction, onUpdate: NoAction)
+  objects           objects? @relation(fields: [storage_object_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model stock_target_levels {
+  product_id   Int
+  location_id  Int
+  target_level Float?
+  target_uom   Int?
+  location     location @relation(fields: [location_id], references: [location_id])
+  product      product  @relation(fields: [product_id], references: [product_id])
+
+  @@unique([product_id, location_id])
+  @@index([location_id])
+  @@schema("public")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model storage {
+  storage_id       BigInt    @id @default(autoincrement())
+  material_id      Int       @unique
+  storage_path     String
+  storage_bucket   String
+  storage_provider String
+  content_type     String
+  original_url     String
+  created_at       DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime? @default(now()) @db.Timestamptz(6)
+  material         material  @relation(fields: [material_id], references: [material_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([material_id], map: "idx_storage_material_id")
+  @@schema("public")
+}
+
+model supplier {
+  supplier_id                Int             @id @default(autoincrement())
+  company_name               String
+  registered_name            String
+  company_reg_number         String?
+  contact_name               String?
+  contact_number             String?
+  alternative_contact_number String?
+  web_url                    String?
+  primary_email              String?
+  secondary_email            String?
+  update_date                DateTime
+  update_user                String
+  vat_number                 String?
+  id_number                  String?
+  gender                     String?         @db.VarChar(1)
+  lead_time                  Int?
+  lead_time_uom_id           Int?
+  tax_rate_id                Int?
+  capture_date               DateTime
+  currency_id                Int?
+  terms_id                   Int?
+  supplier_group_id          Int?
+  trade_disc_perc            Float?
+  target_margin              Float?
+  account_number             String?
+  credit_limit               Float?
+  account_on_hold            Boolean?
+  currency                   currency?       @relation(fields: [currency_id], references: [currency_id])
+  supplier_group             supplier_group? @relation(fields: [supplier_group_id], references: [supplier_group_id])
+  tax_rate                   tax_rate?       @relation(fields: [tax_rate_id], references: [tax_rate_id])
+  terms                      terms?          @relation(fields: [terms_id], references: [terms_id])
+  supplier_cost              supplier_cost[]
+
+  @@index([company_name, registered_name])
+  @@index([currency_id])
+  @@index([supplier_group_id])
+  @@index([tax_rate_id])
+  @@index([terms_id])
+  @@schema("public")
+}
+
+model supplier_address {
+  supplier_address_id Int      @id(map: "supplier_address_pkey_1") @default(autoincrement())
+  supplier_id         Int
+  address_type        String?  @db.VarChar(1)
+  street1             String
+  street2             String?
+  suburb              String?
+  city                String
+  state               String?
+  post_code           String?
+  country_id          Int
+  update_date         DateTime
+  update_user         String
+
+  @@unique([supplier_id, address_type], map: "supplier_address_idx_2")
+  @@index([country_id], map: "supplier_address_country_id_idx_1")
+  @@schema("public")
+}
+
+model supplier_cost {
+  product_id                   Int
+  supplier_id                  Int
+  start_date                   DateTime
+  end_date                     DateTime?
+  supplier_code                String?
+  cost                         Float?
+  quantity                     Int?
+  price_uom                    Int?
+  conversion_formula           String?
+  min_order_qty                Float?
+  min_order_uom                Int?
+  min_order_conversion_formula String?
+  update_date                  DateTime
+  update_user                  String
+  preferred                    Boolean
+  lead_time_days               Int?
+  product                      product   @relation(fields: [product_id], references: [product_id])
+  supplier                     supplier  @relation(fields: [supplier_id], references: [supplier_id])
+
+  @@unique([product_id, supplier_id, start_date])
+  @@index([product_id, supplier_id, end_date, preferred])
+  @@index([supplier_id])
+  @@schema("public")
+}
+
+model supplier_group {
+  supplier_group_id    Int        @id @default(autoincrement())
+  supplier_group_name  String
+  supplier_group_descr String?
+  update_date          DateTime
+  update_user          String
+  is_default           Boolean
+  supplier             supplier[]
+
+  @@schema("public")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model supplier_materials_stock {
+  id                 BigInt   @id @default(autoincrement())
+  item_id            String
+  company            String
+  sales_organization String
+  material_id        Int
+  territory_id       String
+  stock_quantity     Int
+  stock_date         DateTime @db.Timestamptz(6)
+  last_update_date   DateTime @db.Timestamptz(6)
+  is_max_lead_time   Boolean
+  material           material @relation(fields: [material_id], references: [material_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([material_id], map: "idx_product_id")
+  @@schema("public")
+}
+
+model t_and_c {
+  t_and_c_id          Int              @id @default(autoincrement())
+  transaction_type_id Int
+  t_and_c             String           @db.VarChar(1000)
+  transaction_type    transaction_type @relation(fields: [transaction_type_id], references: [transaction_type_id])
+
+  @@index([transaction_type_id])
+  @@schema("public")
+}
+
+model tax_rate {
+  tax_rate_id     Int               @id @default(autoincrement())
+  tax_rate_name   String
+  update_date     DateTime
+  update_user     String
+  is_default      Boolean
+  customer        customer[]
+  customer_group  customer_group[]
+  order_header    order_header[]
+  order_item      order_item[]
+  product         product[]
+  supplier        supplier[]
+  tax_rate_detail tax_rate_detail[]
+
+  @@schema("public")
+}
+
+model tax_rate_detail {
+  tax_rate_id    Int
+  start_date     DateTime
+  end_date       DateTime
+  rate_value     Float
+  update_date    DateTime
+  update_user    String
+  tax_rate       tax_rate @relation(fields: [tax_rate_id], references: [tax_rate_id])
+
+  @@unique([tax_rate_id, start_date])
+  @@index([tax_rate_id, end_date])
+  @@schema("public")
+}
+
+model terms {
+  terms_id       Int              @id @default(autoincrement())
+  terms_descr    String
+  customer       customer[]
+  customer_group customer_group[]
+  supplier       supplier[]
+
+  @@schema("public")
+}
+
+model till {
+  till_id       Int             @id @default(autoincrement())
+  location_id   Int
+  close_trading close_trading[]
+  open_trading  open_trading[]
+
+  @@schema("public")
+}
+
+model transaction_type {
+  transaction_type_id   Int             @id @default(autoincrement())
+  transaction_type_name String
+  order_prefix          String?
+  affects_stock         Int
+  affects_debtors       Int
+  affects_cashbook      Int
+  last_order_number     Int
+  close_trading         close_trading[]
+  open_trading          open_trading[]
+  order_header          order_header[]
+  t_and_c               t_and_c[]
+
+  @@schema("public")
+}
+
+model turnover_budget {
+  turnover_budget_id Int      @id @default(autoincrement())
+  location_id        Int
+  turnover_mm        Int
+  turnover_yr        Int
+  budget             Float
+  customer_group_id  Int?
+  location           location @relation(fields: [location_id], references: [location_id])
+
+  @@index([customer_group_id])
+  @@index([location_id, turnover_mm, turnover_yr])
+  @@schema("public")
+}
+
+model unit_of_measure {
+  uom_id         Int              @id @default(autoincrement())
+  uom_name       String
+  uom_conversion uom_conversion[]
+
+  @@schema("public")
+}
+
+model uom_conversion {
+  from_uom_id        Int
+  to_uom_id          Int
+  conversion_formula String
+  unit_of_measure    unit_of_measure @relation(fields: [from_uom_id], references: [uom_id])
+
+  @@id([from_uom_id, to_uom_id])
+  @@index([from_uom_id])
+  @@schema("public")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model buckets {
+  id                         String                       @id
+  name                       String                       @unique(map: "bname")
+  owner                      String?                      @db.Uuid
+  created_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
+  public                     Boolean?                     @default(false)
+  avif_autodetection         Boolean?                     @default(false)
+  file_size_limit            BigInt?
+  allowed_mime_types         String[]
+  owner_id                   String?
+  objects                    objects[]
+  s3_multipart_uploads       s3_multipart_uploads[]
+  s3_multipart_uploads_parts s3_multipart_uploads_parts[]
+
+  @@schema("storage")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model migrations {
+  id          Int       @id
+  name        String    @unique @db.VarChar(100)
+  hash        String    @db.VarChar(40)
+  executed_at DateTime? @default(now()) @db.Timestamp(6)
+
+  @@schema("storage")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model objects {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bucket_id        String?
+  name             String?
+  owner            String?         @db.Uuid
+  created_at       DateTime?       @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?       @default(now()) @db.Timestamptz(6)
+  last_accessed_at DateTime?       @default(now()) @db.Timestamptz(6)
+  metadata         Json?
+  path_tokens      String[]        @default(dbgenerated("string_to_array(name, '/'::text)"))
+  version          String?
+  owner_id         String?
+  user_metadata    Json?
+  product_image    product_image[]
+  buckets          buckets?        @relation(fields: [bucket_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "objects_bucketId_fkey")
+
+  @@unique([bucket_id, name], map: "bucketid_objname")
+  @@index([bucket_id, name], map: "idx_objects_bucket_id_name")
+  @@index([name], map: "name_prefix_search")
+  @@schema("storage")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model s3_multipart_uploads {
+  id                         String                       @id
+  in_progress_size           BigInt                       @default(0)
+  upload_signature           String
+  bucket_id                  String
+  key                        String
+  version                    String
+  owner_id                   String?
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  user_metadata              Json?
+  buckets                    buckets                      @relation(fields: [bucket_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  s3_multipart_uploads_parts s3_multipart_uploads_parts[]
+
+  @@index([bucket_id, key, created_at], map: "idx_multipart_uploads_list")
+  @@schema("storage")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model s3_multipart_uploads_parts {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  upload_id            String
+  size                 BigInt               @default(0)
+  part_number          Int
+  bucket_id            String
+  key                  String
+  etag                 String
+  owner_id             String?
+  version              String
+  created_at           DateTime             @default(now()) @db.Timestamptz(6)
+  buckets              buckets              @relation(fields: [bucket_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  s3_multipart_uploads s3_multipart_uploads @relation(fields: [upload_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("storage")
+}
+
+enum aal_level {
+  aal1
+  aal2
+  aal3
+
+  @@schema("auth")
+}
+
+enum code_challenge_method {
+  s256
+  plain
+
+  @@schema("auth")
+}
+
+enum factor_status {
+  unverified
+  verified
+
+  @@schema("auth")
+}
+
+enum factor_type {
+  totp
+  webauthn
+  phone
+
+  @@schema("auth")
+}
+
+enum one_time_token_type {
+  confirmation_token
+  reauthentication_token
+  recovery_token
+  email_change_token_new
+  email_change_token_current
+  phone_change_token
+
+  @@schema("auth")
+}
